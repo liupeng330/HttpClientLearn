@@ -17,6 +17,8 @@ public class JSONController {
 	public @ResponseBody
 	Shop getShopInJSON(@PathVariable String name) {
 
+		System.out.println(name);
+
 		Shop shop = new Shop();
 		shop.setName(name);
 		shop.setStaffName(new String[] { "mkyong1", "mkyong2" });

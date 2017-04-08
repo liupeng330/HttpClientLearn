@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
 import org.apache.http.StatusLine;
 import org.apache.http.client.ClientProtocolException;
@@ -14,10 +15,13 @@ import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.protocol.HttpClientContext;
+import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
@@ -31,7 +35,7 @@ import java.nio.charset.Charset;
 public class mytest {
 
     public static void main(String[] args) throws Exception {
-        test3();
+        test4();
     }
 
     // For http get
@@ -78,7 +82,7 @@ public class mytest {
                     .setSocketTimeout(1000)
                     .setConnectTimeout(1000)
                     .build();
-            HttpGet httpget1 = new HttpGet(("http://127.0.0.1:8080/SpringMVC/rest/kfc/brands/aaa"));
+            HttpGet httpget1 = new HttpGet(("http://127.0.0.1:8080/rest/kfc/brands/aaa"));
             httpget1.setConfig(requestConfig);
             CloseableHttpResponse response1 = httpclient.execute(httpget1, context);
             try {
@@ -86,12 +90,93 @@ public class mytest {
             } finally {
                 response1.close();
             }
-            HttpGet httpget2 = new HttpGet(("http://127.0.0.1:8080/SpringMVC/rest/kfc/brands/bbb"));
+            HttpGet httpget2 = new HttpGet(("http://127.0.0.1:8080/rest/kfc/brands/bbb"));
             Shop shop = httpclient.execute(httpget2, getRH(Shop.class), context);
             System.out.println(shop);
         }
         finally {
             httpclient.close();
+        }
+    }
+
+    private static void test4() throws InterruptedException, IOException
+    {
+        PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager();
+        // Increase max total connection to 200
+        cm.setMaxTotal(200);
+        // Increase default max connection per route to 20
+        cm.setDefaultMaxPerRoute(20);
+        // Increase max connections for localhost:80 to 50
+        HttpHost localhost = new HttpHost("locahost", 80);
+        cm.setMaxPerRoute(new HttpRoute(localhost), 50);
+        CloseableHttpClient httpClient = HttpClients.custom()
+                .setConnectionManager(cm)
+                .build();
+        try {
+            // URIs to perform GETs on
+            String[] urisToGet = {
+                    "http://127.0.0.1:8080/rest/kfc/brands/aaa",
+                    "http://127.0.0.1:8080/rest/kfc/brands/bbb",
+                    "http://127.0.0.1:8080/rest/kfc/brands/ccc",
+                    "http://127.0.0.1:8080/rest/kfc/brands/ddd"
+            };
+
+            // create a thread for each URI
+            GetThread[] threads = new GetThread[urisToGet.length];
+            for (int i = 0; i < threads.length; i++) {
+                HttpGet httpget = new HttpGet(urisToGet[i]);
+                threads[i] = new GetThread(httpClient, httpget);
+            }
+
+            // start the threads
+            for (int j = 0; j < threads.length; j++) {
+                threads[j].start();
+            }
+
+            // join the threads
+            for (int j = 0; j < threads.length; j++) {
+                threads[j].join();
+            }
+        }
+        finally {
+            httpClient.close();
+        }
+    }
+
+    static class GetThread extends Thread {
+        private final CloseableHttpClient httpClient;
+        private final HttpContext context;
+        private final HttpGet httpget;
+
+        public GetThread(CloseableHttpClient httpClient, HttpGet httpget) {
+            //每个线程共享一个httpclient，因为它是线程安全的
+            this.httpClient = httpClient;
+
+            //每个线程都create一个自己的context对象，因为它是非线程安全的
+            this.context = HttpClientContext.create();
+
+            this.httpget = httpget;
+        }
+
+        @Override
+        public void run() {
+            try {
+                CloseableHttpResponse response = httpClient.execute(
+                        httpget, context);
+                try {
+                    System.out.println("Run httpget for URI: " + httpget.getURI());
+                    HttpEntity entity = response.getEntity();
+                }
+                finally {
+                    response.close();
+                }
+            }
+            catch (ClientProtocolException ex) {
+                // Handle protocol errors
+            }
+            catch (IOException ex) {
+                // Handle I/O errors
+            }
         }
     }
 
